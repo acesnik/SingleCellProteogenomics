@@ -24,7 +24,7 @@ import scipy
 np.random.seed(0) # Get the same results each time
 WINDOW = 100 # Number of points for moving average window for protein analysis
 PERMUTATIONS = 10000 # Number of permutations used for randomization analysis
-PERMUTATIONS_ISOFORMS = 100
+PERMUTATIONS_ISOFORMS = 1000
 MIN_MEAN_PERCVAR_DIFF_FROM_RANDOM = 0.08 # Cutoff used for percent additional variance explained by the cell cycle than random
 
 fucci = FucciCellCycle.FucciCellCycle() # Object representing FUCCI cell cycle phase durations
@@ -235,7 +235,7 @@ def analyze_ccd_variation_by_mvavg_rna(adata, wp_ensg, ccd_comp, bioccd, adata_n
     pd.DataFrame({"gene" : adata.var_names}).to_csv(f"output/gene_names{'' if not use_isoforms else 'Isoforms'}.csv")
     
     # make folders
-    mvpercs = [] if use_isoforms and not make_mvavg_plots_isoforms else mvavg_plots_pergene(adata, fucci_time_inds, norm_exp_sort, moving_averages, mvavg_xvals, use_isoforms)
+    mvpercs = mvavg_plots_pergene(adata, fucci_time_inds, norm_exp_sort, moving_averages, mvavg_xvals, use_isoforms, make_plots=False)
     if not use_isoforms or make_mvavg_plots_isoforms:
         folder = f"{'f:/CellCycle/' if use_isoforms else ''}figures/RNAPseudotimes{'' if not use_isoforms else 'Isoforms'}"
         ccdtransccdprotfolder = f"{'f:/CellCycle/' if use_isoforms else ''}figures/RNA_CCDTranscriptCCDProtein{'' if not use_isoforms else 'Isoforms'}"
@@ -260,7 +260,7 @@ def analyze_ccd_variation_by_mvavg_rna(adata, wp_ensg, ccd_comp, bioccd, adata_n
     # Figures of merit
     with open("output/figuresofmerit.txt", "a") as file:
         fom = "--- RNA pseudotime\n\n"
-        fom += f"We identified {sum(ccdtranscript)} {'genes' if use_isoforms else 'transcript isoforms'} of {len(ccdtranscript)} protein-coding {'genes' if use_isoforms else 'transcript isoforms'} analyzed ({100 * sum(ccdtranscript) / len(ccdtranscript)}%) to have variance in expression levels correlated to cell cycle progression" + "\n\n"
+        fom += f"We identified {sum(ccdtranscript)} {'genes' if not use_isoforms else 'transcript isoforms'} of {len(ccdtranscript)} protein-coding {'genes' if not use_isoforms else 'transcript isoforms'} analyzed ({100 * sum(ccdtranscript) / len(ccdtranscript)}%) to have variance in expression levels correlated to cell cycle progression" + "\n\n"
         if not use_isoforms:
             fom += f"We can attribute only {100 * sum(ccdprotein_transcript_regulated) / sum(ccdprotein)}% of proteomic cell cycle regulation to transcriptomic cycling with single-cell RNA sequencing" + "\n\n"
             fom += f"This includes {100 * sum(np.isin(adata.var_names[mean_diff_from_rng > MIN_MEAN_PERCVAR_DIFF_FROM_RANDOM], adata.var_names[adata_regevccdgenes])) / sum(adata_regevccdgenes)}% of known CCD transcripts. Of these, {sum(ccdprotein_transcript_regulated)} were also cell cycle dependent proteins ({100 * sum(ccdprotein_transcript_regulated) / sum(ccdprotein)}%). Of the {sum(ccdprotein)} CCD proteins, {sum(ccdprotein_nontranscript_regulated)} did not have CCD transcripts, including DUSP18 (Figure 2E). There were {sum(ccdtranscript & adata_nonccdproteins)} CCD transcripts that were Non-CCD as proteins." + "\n\n"
@@ -292,10 +292,10 @@ def compare_genes_to_isoforms(adata, ccdprotein, ccdtranscript, adata_nonccdprot
     print(f"{sum(ccdIsoformsPerCcdProtein > 0) / sum(ccdprotein)}% of CCD proteins had at least one CCD transcript isoform")
     print(f"{sum(ccdIsoformsPerNonCcdProtein > 0) / sum(adata_nonccdprotein)}% of non-CCD proteins had at least one CCD transcript isoform")
     
-def analyze_isoforms(adata, ccdtranscript, wp_ensg, ccd_comp, nonccd_comp, u_plates, make_mvavg_plots_isoforms=False):
+def analyze_isoforms(adata, wp_ensg, ccd_comp, nonccd_comp, u_plates, make_mvavg_plots_isoforms=False, biotype_to_use="protein_coding"):
     '''Analyze the isoform-level results over the cell cycle'''
     # Read in the data & QC analysis
-    valuetype, use_spikeins, biotype_to_use = "Tpms", False, "protein_coding"
+    valuetype, use_spikeins = "Tpms", False
     adata_isoform, phases_isoform = RNADataPreparation.read_counts_and_phases(valuetype, use_spikeins, biotype_to_use, u_plates, use_isoforms=True)
     # RNADataPreparation.plot_pca_for_batch_effect_analysis(adata_isoform, "BeforeRemovingNoncycling_Isoform")
     adata_isoform, phasesfilt_isoform = RNADataPreparation.qc_filtering(adata_isoform, do_log_normalize=True, do_remove_blob=True)
@@ -309,6 +309,17 @@ def analyze_isoforms(adata, ccdtranscript, wp_ensg, ccd_comp, nonccd_comp, u_pla
     adata_ccdprotein_isoform, adata_nonccdprotein_isoform, adata_regevccdgenes_isoform = RNADataPreparation.is_ccd(adata_isoform, wp_ensg, ccd_comp, nonccd_comp, bioccd, ccd_regev_filtered_isoform)
     rna_ccd_analysis_results = analyze_ccd_variation_by_mvavg_rna(adata_isoform, wp_ensg, ccd_comp, bioccd, adata_nonccdprotein_isoform, adata_regevccdgenes_isoform, biotype_to_use, use_isoforms=True, make_mvavg_plots_isoforms=make_mvavg_plots_isoforms)
     percent_ccd_variance_isoform, total_gini_isoform, mean_diff_from_rng_isoform, pass_meandiff_isoform, eq_percvar_adj_isoform, fucci_time_inds_isoform, norm_exp_sort_isoform, moving_averages_isoform, mvavg_xvals_isoform, perms_isoform, ccdtranscript_isoform, ccdprotein_isoform, mvpercs_isoform = rna_ccd_analysis_results    
+    make_plotting_dataframe(
+        adata_isoform,
+        ccdtranscript_isoform,
+        wp_ensg,
+        bioccd,
+        norm_exp_sort_isoform[np.argsort(fucci_time_inds_isoform), :],
+        mvavg_xvals_isoform,
+        moving_averages_isoform,
+        mvpercs_isoform,
+        use_isoforms=True
+    )
     return adata_isoform, ccdtranscript_isoform
 
 def figures_ccd_analysis_rna(adata, percent_ccd_variance, mean_diff_from_rng, pass_meandiff, eq_percvar_adj, wp_ensg, ccd_comp, ccd_regev_filtered):
@@ -336,7 +347,7 @@ def figures_ccd_analysis_rna(adata, percent_ccd_variance, mean_diff_from_rng, pa
     plt.savefig("figures/MedianDiffFromRandomVolcano_RNA.pdf")
     plt.close()
 
-def mvavg_plots_pergene(adata, fucci_time_inds, norm_exp_sort, moving_averages, mvavg_xvals, use_isoforms=False):
+def mvavg_plots_pergene(adata, fucci_time_inds, norm_exp_sort, moving_averages, mvavg_xvals, use_isoforms=False, make_plots=False):
     '''Generate moving average plots for all the genes'''
     mvpercs = []
     examples = ["ENSG00000011426", "ENSG00000006747", "ENSG00000072756", "ENSG00000102908", 
@@ -349,18 +360,19 @@ def mvavg_plots_pergene(adata, fucci_time_inds, norm_exp_sort, moving_averages, 
         if iii % 500 == 0: print(f"well {iii} of {len(adata.var_names)}")  
         windows = np.asarray([np.arange(start, start + WINDOW) for start in np.arange(len(adata.obs["fucci_time"][fucci_time_inds]) - WINDOW + 1)])
         mvperc = MovingAverages.mvpercentiles(norm_exp_sort[:,iii][windows])
-        mvpercs.append(mvperc if not use_isoforms else [])
-        MovingAverages.temporal_mov_avg_rna(adata.obs["fucci_time"][fucci_time_inds], norm_exp_sort[:,iii], mvavg_xvals, moving_averages[:,iii], mvperc, f"{'f:/CellCycle/' if use_isoforms else ''}figures/RNAPseudotimes{'' if not use_isoforms else 'Isoforms'}", f"{ensg}")
-        if ensg in examples:
-            print(ensg)
-            for plate in np.unique(adata.obs["plate"]):
-                isFromPlate = adata.obs["plate"] == plate
-                windowPlate = int(WINDOW / len(adata.obs["plate"]) * sum(isFromPlate))
-                mvavgPlate = MovingAverages.mvavg(norm_exp_sort[isFromPlate, iii], windowPlate)
-                mvavgXPlate = MovingAverages.mvavg(adata.obs["fucci_time"][fucci_time_inds][isFromPlate], windowPlate)
-                windowsPlate = np.asarray([np.arange(start, start + windowPlate) for start in np.arange(sum(isFromPlate) - windowPlate + 1)])
-                mvpercPlate = MovingAverages.mvpercentiles(norm_exp_sort[isFromPlate, iii][windowsPlate])
-                MovingAverages.temporal_mov_avg_rna(adata.obs["fucci_time"][fucci_time_inds][isFromPlate], norm_exp_sort[adata.obs["plate"] == plate,iii], mvavgXPlate, mvavgPlate, mvpercPlate, f"{'f:/CellCycle/' if use_isoforms else ''}figures/RNAPseudotimesExamples", f"{ensg}{plate}")
+        mvpercs.append(mvperc)
+        if make_plots:
+            MovingAverages.temporal_mov_avg_rna(adata.obs["fucci_time"][fucci_time_inds], norm_exp_sort[:,iii], mvavg_xvals, moving_averages[:,iii], mvperc, f"{'f:/CellCycle/' if use_isoforms else ''}figures/RNAPseudotimes{'' if not use_isoforms else 'Isoforms'}", f"{ensg}")
+            if ensg in examples:
+                print(ensg)
+                for plate in np.unique(adata.obs["plate"]):
+                    isFromPlate = adata.obs["plate"] == plate
+                    windowPlate = int(WINDOW / len(adata.obs["plate"]) * sum(isFromPlate))
+                    mvavgPlate = MovingAverages.mvavg(norm_exp_sort[isFromPlate, iii], windowPlate)
+                    mvavgXPlate = MovingAverages.mvavg(adata.obs["fucci_time"][fucci_time_inds][isFromPlate], windowPlate)
+                    windowsPlate = np.asarray([np.arange(start, start + windowPlate) for start in np.arange(sum(isFromPlate) - windowPlate + 1)])
+                    mvpercPlate = MovingAverages.mvpercentiles(norm_exp_sort[isFromPlate, iii][windowsPlate])
+                    MovingAverages.temporal_mov_avg_rna(adata.obs["fucci_time"][fucci_time_inds][isFromPlate], norm_exp_sort[adata.obs["plate"] == plate,iii], mvavgXPlate, mvavgPlate, mvpercPlate, f"{'f:/CellCycle/' if use_isoforms else ''}figures/RNAPseudotimesExamples", f"{ensg}{plate}")
     return np.array(mvpercs)
 
 def plot_umap_ccd_cutoffs(adata, mean_diff_from_rng):
@@ -547,7 +559,7 @@ def cell_data_string(adata, idx):
                  adata.obs['Green530'][idx]]
     return "|".join([str(xx) for xx in cell_data])
     
-def make_plotting_dataframe(adata, ccdtranscript, wp_ensg, bioccd, norm_exp_sort, mvavgs_x, moving_averages, mvpercs):
+def make_plotting_dataframe(adata, ccdtranscript, wp_ensg, bioccd, norm_exp_sort, mvavgs_x, moving_averages, mvpercs, use_isoforms=False):
     '''Make a single table for HPA website figures on RNA pseudotime, boxplots, and fucci plots'''
     hasProteinData = np.isin(adata.var_names, np.concatenate((wp_ensg, bioccd)))
     filterccd = ccdtranscript | hasProteinData
@@ -565,7 +577,7 @@ def make_plotting_dataframe(adata, ccdtranscript, wp_ensg, bioccd, norm_exp_sort
         "mvavgs_25p" : [",".join([str(yyy) for yyy in yy]) for yy in mvpercs[filterccd,1,:]],
         "mvavgs_75p" : [",".join([str(yyy) for yyy in yy]) for yy in mvpercs[filterccd,-2,:]],
         "phase" : [",".join([str(xx) for xx in adata.obs['phase']]) for ii in np.arange(sum(filterccd))]
-        }).to_csv("output/RNAPseudotimePlotting.csv.gz", index=False, sep="\t")
+        }).to_csv(f"output/RNAPseudotimePlotting{'' if not use_isoforms else 'Isoforms'}.csv.gz", index=False, sep="\t")
     pd.DataFrame({
         "ENSG" : adata.var_names,
         "CCD" : ccdtranscript,
@@ -580,4 +592,4 @@ def make_plotting_dataframe(adata, ccdtranscript, wp_ensg, bioccd, norm_exp_sort
         "mvavgs_25p" : [",".join([str(yyy) for yyy in yy]) for yy in mvpercs[:,1,:]],
         "mvavgs_75p" : [",".join([str(yyy) for yyy in yy]) for yy in mvpercs[:,-2,:]],
         "phase" : [",".join([str(xx) for xx in adata.obs['phase']]) for ii in np.arange(len(adata.var_names))]
-        }).to_csv("output/RNAPseudotimePlotting_Unfiltered.csv.gz", index=False, sep="\t")
+        }).to_csv(f"output/RNAPseudotimePlotting_Unfiltered{'' if not use_isoforms else 'Isoforms'}.csv.gz", index=False, sep="\t")
